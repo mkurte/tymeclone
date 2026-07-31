@@ -43,9 +43,11 @@ func formatDateTime(_ date: Date) -> String {
     return formatter.string(from: date)
 }
 
-// #filePath is resolved at compile time, so this reliably points at the directory
-// containing main.swift regardless of the working directory the app is launched from.
-let sourceFileDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+// Resolved at runtime from the current user's home directory, so the default
+// works on any machine - unlike a path baked in at compile time via #filePath.
+let defaultOutputFolder = FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent("Documents")
+    .appendingPathComponent("TymeClone")
 let outputFolderDefaultsKey = "OutputFolder"
 let lastTaskNameDefaultsKey = "LastTaskName"
 
@@ -53,7 +55,7 @@ func currentOutputFolder() -> URL {
     if let custom = UserDefaults.standard.string(forKey: outputFolderDefaultsKey), !custom.isEmpty {
         return URL(fileURLWithPath: custom)
     }
-    return sourceFileDirectory
+    return defaultOutputFolder
 }
 
 // Quotes a CSV field if it contains characters that would otherwise break column parsing.

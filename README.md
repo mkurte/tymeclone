@@ -14,7 +14,7 @@ A tiny macOS menu bar timer that reproduces the one feature from [Tyme 2](https:
 - Configurable idle threshold (1/3/5/10/15 min)
 - "Show Seconds" toggle for the menu bar display
 - Every finished segment is appended to a `segments.csv` file, one row per segment
-- Configurable output folder (defaults to the folder containing `main.swift`)
+- Configurable output folder (defaults to `~/Documents/TymeClone`, resolved at runtime so it works on any machine)
 - "Export Daily Summary…" writes a `daily_summary.csv` with per-day totals
 
 ## Requirements
@@ -63,7 +63,7 @@ Click the status icon in the menu bar:
 - **Set task (…)** — opens a popup to change the current task name; the menu title always shows the active one. Confirming with an empty field falls back to "Unnamed task". The last name used is remembered across restarts
 - **Idle Threshold** — how long the Mac must be idle before the popup appears
 - **Show Seconds** — toggle seconds in the menu bar display
-- **Output Folder** — shows the current CSV location; "Choose Output Folder…" picks a custom folder, "Use Default Location" resets to the folder containing `main.swift`
+- **Output Folder** — shows the current CSV location; "Choose Output Folder…" picks a custom folder, "Use Default Location" resets to `~/Documents/TymeClone`
 - **Export Daily Summary…** — aggregates `segments.csv` by day into `daily_summary.csv` in the same folder
 
 ## CSV format
