@@ -109,12 +109,44 @@ func exportDailySummary() throws -> URL {
     return summaryURL
 }
 
+// SF Symbols give pixel-precise size and baseline control, unlike emoji characters
+// whose glyph metrics vary and don't line up cleanly with monospaced digit text.
+func makeStatusIcon(systemName: String, tint: NSColor?, pointSize: CGFloat = NSFont.systemFontSize - 1) -> NSImage {
+    let sizeConfig = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+    guard var image = NSImage(systemSymbolName: systemName, accessibilityDescription: nil)?
+        .withSymbolConfiguration(sizeConfig) else {
+        return NSImage()
+    }
+    if let tint {
+        let paletteConfig = NSImage.SymbolConfiguration(paletteColors: [tint])
+        image = image.withSymbolConfiguration(paletteConfig) ?? image
+    } else {
+        image.isTemplate = true
+    }
+    return image
+}
+
+let recordingRed = NSColor(calibratedRed: 0.7, green: 0.0, blue: 0.0, alpha: 1.0)
+let recordingIcon = makeStatusIcon(systemName: "circle.fill", tint: recordingRed, pointSize: NSFont.systemFontSize - 6)
+let idleIcon = makeStatusIcon(systemName: "square.fill", tint: nil)
+
 // Fixed-width digits keep the status bar title from jittering as the seconds tick.
-func statusBarTitle(_ text: String) -> NSAttributedString {
-    NSAttributedString(
-        string: text,
-        attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
+func statusBarTitle(icon: NSImage, text: String) -> NSAttributedString {
+    let textFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+    let iconSize = icon.size
+
+    let attachment = NSTextAttachment()
+    attachment.image = icon
+    attachment.bounds = CGRect(
+        x: 0,
+        y: (textFont.capHeight - iconSize.height) / 2,
+        width: iconSize.width,
+        height: iconSize.height
     )
+
+    let result = NSMutableAttributedString(attachment: attachment)
+    result.append(NSAttributedString(string: " \(text)", attributes: [.font: textFont]))
+    return result
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -134,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.attributedTitle = statusBarTitle("\u{23F1} 00:00:00")
+        statusItem.button?.attributedTitle = statusBarTitle(icon: idleIcon, text: "00:00:00")
 
         let menu = NSMenu()
 
@@ -271,12 +303,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func tick() {
         guard isRecording, let start = sessionStart else {
-            statusItem.button?.attributedTitle = statusBarTitle("\u{23F1} \(formatDuration(0, includeSeconds: showSeconds))")
+            statusItem.button?.attributedTitle = statusBarTitle(icon: idleIcon, text: formatDuration(0, includeSeconds: showSeconds))
             return
         }
 
         let elapsed = Date().timeIntervalSince(start)
-        statusItem.button?.attributedTitle = statusBarTitle("\u{23F1} \(formatDuration(elapsed, includeSeconds: showSeconds))")
+        statusItem.button?.attributedTitle = statusBarTitle(icon: recordingIcon, text: formatDuration(elapsed, includeSeconds: showSeconds))
 
         let idle = systemIdleSeconds()
 

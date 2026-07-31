@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "TymeClone",
-            path: "Sources/TymeClone"
+            path: "Sources/TymeClone",
+            exclude: ["segments.csv"]
         )
     ]
 )
