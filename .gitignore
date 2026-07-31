@@ -1,4 +1,6 @@
 .build/
 .swiftpm/
 segments.csv
+daily_summary.csv
+TymeClone.app/
 .DS_Store

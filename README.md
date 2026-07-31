@@ -37,6 +37,24 @@ swift build -c release
 
 The app runs as a menu bar accessory (no Dock icon). Look for the status icon (● or ■) — if your menu bar is full, hold **Cmd** and drag icons around to reveal it.
 
+### Launching by double-click
+
+A bare command-line binary usually opens in a Terminal window when double-clicked in Finder. To get a proper double-clickable app instead:
+
+```bash
+./build-app.sh
+```
+
+This builds a release binary and wraps it into `TymeClone.app` (ad-hoc signed, `LSUIElement` so it stays a menu-bar-only app with no Dock icon). Double-click `TymeClone.app` in Finder, or drag it into `/Applications`. Re-run the script after any code change to rebuild the bundle — `TymeClone.app` itself is gitignored, only `build-app.sh` is tracked.
+
+To install it properly, copy the built bundle into `/Applications`:
+
+```bash
+cp -R TymeClone.app /Applications/
+```
+
+Since it's built locally (not downloaded), macOS won't set a quarantine flag, so Gatekeeper won't complain on first launch. To start it automatically at login, add it in **System Settings → General → Login Items** after copying it to `/Applications`. There's no auto-update mechanism — after a code change, rebuild with `./build-app.sh` and copy it over again.
+
 ## Usage
 
 Click the status icon in the menu bar:
