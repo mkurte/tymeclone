@@ -1,0 +1,4 @@
+.build/
+.swiftpm/
+segments.csv
+.DS_Store
