@@ -71,6 +71,44 @@ func appendSegmentToCSV(start: Date, end: Date, duration: TimeInterval) {
     }
 }
 
+func parseDuration(_ text: String) -> TimeInterval {
+    let parts = text.split(separator: ":").compactMap { Int($0) }
+    guard parts.count == 3 else { return 0 }
+    return TimeInterval(parts[0] * 3600 + parts[1] * 60 + parts[2])
+}
+
+enum ExportError: Error {
+    case noSegmentsFile
+}
+
+// Groups segments.csv by the Start date and writes the per-day totals to daily_summary.csv.
+func exportDailySummary() throws -> URL {
+    let folder = currentOutputFolder()
+    let segmentsURL = folder.appendingPathComponent("segments.csv")
+    guard FileManager.default.fileExists(atPath: segmentsURL.path) else {
+        throw ExportError.noSegmentsFile
+    }
+
+    let content = try String(contentsOf: segmentsURL, encoding: .utf8)
+    var totalsByDate: [String: TimeInterval] = [:]
+
+    for line in content.split(separator: "\n").dropFirst() {
+        let columns = line.split(separator: ",")
+        guard columns.count == 3 else { continue }
+        let date = String(columns[0].prefix(10))
+        totalsByDate[date, default: 0] += parseDuration(String(columns[2]))
+    }
+
+    var output = "Date,Total Duration\n"
+    for date in totalsByDate.keys.sorted() {
+        output += "\(date),\(formatDuration(totalsByDate[date]!))\n"
+    }
+
+    let summaryURL = folder.appendingPathComponent("daily_summary.csv")
+    try output.write(to: summaryURL, atomically: true, encoding: .utf8)
+    return summaryURL
+}
+
 // Fixed-width digits keep the status bar title from jittering as the seconds tick.
 func statusBarTitle(_ text: String) -> NSAttributedString {
     NSAttributedString(
@@ -140,6 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         outputParent.submenu = outputMenu
         menu.addItem(outputParent)
 
+        let exportItem = NSMenuItem(title: "Export Daily Summary\u{2026}", action: #selector(exportDailySummaryAction), keyEquivalent: "")
+        exportItem.target = self
+        menu.addItem(exportItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
@@ -190,6 +232,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func resetOutputFolder() {
         UserDefaults.standard.removeObject(forKey: outputFolderDefaultsKey)
         outputFolderInfoItem.title = currentOutputFolder().path
+    }
+
+    @objc private func exportDailySummaryAction() {
+        let alert = NSAlert()
+        do {
+            let summaryURL = try exportDailySummary()
+            alert.messageText = "Export complete"
+            alert.informativeText = "daily_summary.csv was written to \(summaryURL.path)"
+            alert.alertStyle = .informational
+        } catch {
+            alert.messageText = "Export failed"
+            alert.informativeText = "No segments.csv found in \(currentOutputFolder().path) yet. Record something first."
+            alert.alertStyle = .warning
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private func startRecording() {
