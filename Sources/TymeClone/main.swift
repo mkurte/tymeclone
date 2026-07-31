@@ -47,6 +47,7 @@ func formatDateTime(_ date: Date) -> String {
 // containing main.swift regardless of the working directory the app is launched from.
 let sourceFileDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let outputFolderDefaultsKey = "OutputFolder"
+let lastTaskNameDefaultsKey = "LastTaskName"
 
 func currentOutputFolder() -> URL {
     if let custom = UserDefaults.standard.string(forKey: outputFolderDefaultsKey), !custom.isEmpty {
@@ -55,14 +56,56 @@ func currentOutputFolder() -> URL {
     return sourceFileDirectory
 }
 
-func appendSegmentToCSV(start: Date, end: Date, duration: TimeInterval) {
+// Quotes a CSV field if it contains characters that would otherwise break column parsing.
+func csvField(_ value: String) -> String {
+    guard value.contains(",") || value.contains("\"") || value.contains("\n") else {
+        return value
+    }
+    return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+}
+
+// Parses a single CSV line, honoring quoted fields (so task names may contain commas).
+func parseCSVLine(_ line: Substring) -> [String] {
+    var fields: [String] = []
+    var current = ""
+    var insideQuotes = false
+    let chars = Array(line)
+    var i = 0
+    while i < chars.count {
+        let char = chars[i]
+        if insideQuotes {
+            if char == "\"" {
+                if i + 1 < chars.count && chars[i + 1] == "\"" {
+                    current.append("\"")
+                    i += 1
+                } else {
+                    insideQuotes = false
+                }
+            } else {
+                current.append(char)
+            }
+        } else if char == "\"" {
+            insideQuotes = true
+        } else if char == "," {
+            fields.append(current)
+            current = ""
+        } else {
+            current.append(char)
+        }
+        i += 1
+    }
+    fields.append(current)
+    return fields
+}
+
+func appendSegmentToCSV(task: String, start: Date, end: Date, duration: TimeInterval) {
     let folder = currentOutputFolder()
     try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let fileURL = folder.appendingPathComponent("segments.csv")
-    let line = "\(formatDateTime(start)),\(formatDateTime(end)),\(formatDuration(duration))\n"
+    let line = "\(csvField(task)),\(formatDateTime(start)),\(formatDateTime(end)),\(formatDuration(duration))\n"
 
     if !FileManager.default.fileExists(atPath: fileURL.path) {
-        let header = "Start,End,Duration\n"
+        let header = "Task,Start,End,Duration\n"
         try? (header + line).write(to: fileURL, atomically: true, encoding: .utf8)
     } else if let handle = try? FileHandle(forWritingTo: fileURL) {
         handle.seekToEndOfFile()
@@ -93,10 +136,10 @@ func exportDailySummary() throws -> URL {
     var totalsByDate: [String: TimeInterval] = [:]
 
     for line in content.split(separator: "\n").dropFirst() {
-        let columns = line.split(separator: ",")
-        guard columns.count == 3 else { continue }
-        let date = String(columns[0].prefix(10))
-        totalsByDate[date, default: 0] += parseDuration(String(columns[2]))
+        let columns = parseCSVLine(line)
+        guard columns.count == 4 else { continue }
+        let date = String(columns[1].prefix(10))
+        totalsByDate[date, default: 0] += parseDuration(columns[3])
     }
 
     var output = "Date,Total Duration\n"
@@ -155,16 +198,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var isRecording = false
     private var sessionStart: Date?
+    private var currentTaskName = "Unnamed task"
     private var idleThreshold: TimeInterval = 5 * 60
     private var hasPromptedForCurrentIdlePeriod = false
     private var showSeconds = true
 
     private var startStopItem: NSMenuItem!
+    private var setTaskItem: NSMenuItem!
     private var showSecondsItem: NSMenuItem!
     private var outputFolderInfoItem: NSMenuItem!
     private var thresholdItems: [TimeInterval: NSMenuItem] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let savedTaskName = UserDefaults.standard.string(forKey: lastTaskNameDefaultsKey) ?? ""
+        currentTaskName = savedTaskName.isEmpty ? "Unnamed task" : savedTaskName
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.attributedTitle = statusBarTitle(icon: idleIcon, text: "00:00:00")
 
@@ -173,6 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startStopItem = NSMenuItem(title: "Start Recording", action: #selector(toggleRecording), keyEquivalent: "")
         startStopItem.target = self
         menu.addItem(startStopItem)
+
+        setTaskItem = NSMenuItem(title: "Set task (\(currentTaskName))", action: #selector(setCurrentTask), keyEquivalent: "")
+        setTaskItem.target = self
+        menu.addItem(setTaskItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -232,6 +284,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func setCurrentTask() {
+        let alert = NSAlert()
+        alert.messageText = "Task"
+        alert.informativeText = "What are you working on?"
+        alert.addButton(withTitle: "Set")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .informational
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        textField.stringValue = currentTaskName
+        textField.placeholderString = "Task name"
+        alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let entered = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        currentTaskName = entered.isEmpty ? "Unnamed task" : entered
+        UserDefaults.standard.set(currentTaskName, forKey: lastTaskNameDefaultsKey)
+        setTaskItem.title = "Set task (\(currentTaskName))"
+    }
+
     @objc private func setThreshold(_ sender: NSMenuItem) {
         guard let seconds = sender.representedObject as? TimeInterval else { return }
         idleThreshold = seconds
@@ -287,15 +362,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionStart = Date()
         hasPromptedForCurrentIdlePeriod = false
         startStopItem.title = "Stop Recording"
-        print("Recording started at \(formatClock(sessionStart!))")
+        print("Recording started at \(formatClock(sessionStart!)) for task '\(currentTaskName)'")
     }
 
     private func stopRecording(splitAt endDate: Date? = nil) {
         guard let start = sessionStart else { return }
         let end = endDate ?? Date()
         let duration = end.timeIntervalSince(start)
-        print("Segment: \(formatClock(start)) - \(formatClock(end)) (\(formatDuration(duration)))")
-        appendSegmentToCSV(start: start, end: end, duration: duration)
+        print("Segment: \(formatClock(start)) - \(formatClock(end)) (\(formatDuration(duration))) [\(currentTaskName)]")
+        appendSegmentToCSV(task: currentTaskName, start: start, end: end, duration: duration)
         isRecording = false
         sessionStart = nil
         startStopItem.title = "Start Recording"
