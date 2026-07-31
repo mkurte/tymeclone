@@ -71,3 +71,7 @@ Date,Total Duration
 ## Scope
 
 This is a focused prototype covering the idle-detection killer feature plus just enough to make the export usable — there's no project hierarchy, editing of past segments, or GUI reporting (yet). Segments are a single flat timeline tagged with a task name, not a full project/task tree.
+
+## Please note
+
+This app is vibe coded with Claude.
