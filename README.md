@@ -17,6 +17,7 @@ A tiny macOS menu bar timer that reproduces the one feature from [Tyme 2](https:
 - Every finished segment is appended to a `segments.csv` file, one row per segment
 - Configurable output folder (defaults to `~/Documents/TymeClone`, resolved at runtime so it works on any machine)
 - "Export Daily Summary…" writes a `daily_summary.csv` with per-day totals
+- "Open Report" writes a self-contained `report.html` (out of the way, not into the output folder — nothing for you to accidentally break) and opens it in your browser — drop `segments.csv` in (or use the file picker), get totals by task and by day as bar charts plus the full segment table, and an "Export as PDF" button (uses the browser's print-to-PDF)
 
 ## Requirements
 
@@ -67,6 +68,7 @@ Click the status icon in the menu bar:
 - **Show Seconds** — toggle seconds in the menu bar display
 - **Output Folder** — shows the current CSV location; "Choose Output Folder…" picks a custom folder, "Use Default Location" resets to `~/Documents/TymeClone`
 - **Export Daily Summary…** — aggregates `segments.csv` by day into `daily_summary.csv` in the same folder
+- **Open Report** — (re)writes `report.html` into your system temp directory and opens it in your default browser for a visual breakdown; load `segments.csv` via drag-and-drop or "Choose File…"
 
 ## CSV format
 
@@ -87,6 +89,14 @@ Client Report,2026-07-31 09:00:12,2026-07-31 10:15:47,01:15:35
 Date,Total Duration
 2026-07-31,03:45:22
 ```
+
+## HTML report
+
+`report.html` is a static, self-contained page (no external requests, no dependencies) that's rewritten into your system temp directory every time you launch the app or click "Open Report" — not into the output folder, so there's nothing sitting next to `segments.csv` that you could accidentally rename, edit, or delete. It always matches the current app version since it's regenerated on every open.
+
+Because of that, it doesn't try to auto-load `segments.csv` (it's no longer sitting next to it, and browsers block that kind of local `fetch()` anyway) — just drag `segments.csv` onto the page, or use "Choose File…". Once loaded, it shows total tracked time, a breakdown by task and by day (bar charts), and the full segment table. "Export as PDF" triggers the browser's print dialog — choose "Save as PDF" there.
+
+Since it's just a browser tab, you can also just print it (`Cmd+P`) or point any other CSV at it via drag-and-drop — it's not tied to this specific app's output.
 
 ## Scope
 

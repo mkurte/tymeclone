@@ -100,6 +100,18 @@ func parseCSVLine(_ line: Substring) -> [String] {
     return fields
 }
 
+// Rewritten on every launch and every menu click so it always matches the current
+// app version. Lives in the system temp directory, not the user's output folder -
+// so there's nothing sitting next to segments.csv for a user to rename or delete.
+@discardableResult
+func writeReportHTML() -> URL? {
+    let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("report.html")
+    guard (try? reportHTMLTemplate.write(to: fileURL, atomically: true, encoding: .utf8)) != nil else {
+        return nil
+    }
+    return fileURL
+}
+
 func appendSegmentToCSV(task: String, start: Date, end: Date, duration: TimeInterval) {
     let folder = currentOutputFolder()
     try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -291,10 +303,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         exportItem.target = self
         menu.addItem(exportItem)
 
+        let reportItem = NSMenuItem(title: "Open Report", action: #selector(openReport), keyEquivalent: "")
+        reportItem.target = self
+        menu.addItem(reportItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
+
+        writeReportHTML()
 
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tick()
@@ -382,6 +400,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
+    }
+
+    @objc private func openReport() {
+        guard let reportURL = writeReportHTML() else {
+            let alert = NSAlert()
+            alert.messageText = "Could not write report.html"
+            alert.informativeText = "Check that \(currentOutputFolder().path) is writable."
+            alert.alertStyle = .warning
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
+        }
+        NSWorkspace.shared.open(reportURL)
     }
 
     private func startRecording() {

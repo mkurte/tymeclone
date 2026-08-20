@@ -6,6 +6,8 @@ Menu bar time tracker for macOS, single-file Swift package. See [README.md](../R
 
 Everything lives in `Sources/TymeClone/main.swift` — top-level free functions (idle detection, CSV read/write, icon building), then one `AppDelegate` class holding all UI/menu state. Keep it this way unless the project grows enough to justify splitting files; it's still small enough that one file is easier to navigate than jumping around.
 
+The one exception is `Sources/TymeClone/ReportHTML.swift`, which holds `reportHTMLTemplate` — the entire HTML/CSS/JS report page as one Swift raw string literal (`#"""..."""#`). It's split out purely so the giant string doesn't drown out `main.swift`; it's still compiled as a normal part of the same target (no `Package.swift` change needed, no resource bundling — see below).
+
 ## Build & run
 
 ```bash
@@ -38,6 +40,17 @@ No test target. Verify logic changes (CSV parsing/escaping, duration math, aggre
 ## Task Total menu item
 
 `taskHistoricalTotal` is an in-memory cache of "sum of all `segments.csv` rows matching the current task name", not re-read from disk on every tick. It's recomputed from disk (`totalDuration(forTask:)`) only on launch and on task change (`setCurrentTask`); on `stopRecording` it's just incremented in-memory by the new segment's duration instead of re-reading the file — cheaper, and correct as long as nothing else writes to `segments.csv` concurrently. If you ever add a way to edit/delete past segments, this cache needs an explicit invalidation path or it'll drift from the file.
+
+## HTML report (`report.html`)
+
+`writeReportHTML()` in `main.swift` writes `reportHTMLTemplate` (from `ReportHTML.swift`) to `FileManager.default.temporaryDirectory` (**not** the output folder) as `report.html`, overwriting it every launch and every "Open Report" click — there's no versioning, the file on disk always matches whatever's currently compiled in. It's a fully static, dependency-free page: no build step, no bundling, nothing to keep in sync with `main.swift` beyond the CSV column contract below.
+
+- **Deliberately lives in the temp directory, not next to `segments.csv`.** It originally wrote into the output folder (same place as the CSVs), but the user wanted app-internal files kept away from their data so there's nothing to accidentally rename/edit/delete. The temp directory was the pragmatic way to get that "can't be broken by the user" property without the SwiftPM-resource-bundling complexity below — don't move it back into the output folder.
+- **Deliberately did not use SwiftPM resource bundling** (`resources: [.copy(...)]` + `Bundle.module`) for this file either, for the same "keep it inside the app, out of user reach" goal. That approach would need `build-app.sh` to also copy the generated resource bundle into `TymeClone.app/Contents/Resources/`, adding a second place that can silently drift out of sync. A plain Swift string constant, rewritten to temp on demand, gets the same practical outcome (nothing user-editable, nothing to break) without touching `build-app.sh` at all.
+- **Wrote the Swift string as a raw literal (`#"""..."""#`), not a normal `"""..."""`.** The JS inside uses backslash escapes (`\r`, `\n` in a regex, `\'` in a string) that a normal Swift string would silently reinterpret as its own escape sequences (e.g. `\r` becomes an actual carriage-return character instead of staying literal backslash-r). Raw string means backslashes pass through untouched. The corollary: inside that raw string, `\#(...)` **is** real Swift interpolation (matches the `#` count) — don't let one slip in by accident, it'll fail to compile with a confusing "cannot find in scope" error pointing at whatever token follows.
+- **The page never attempts `fetch('segments.csv')` as its primary path in practice** — even setting that aside, local `file://` pages can't fetch cross-origin in Safari/Chrome, so it was already falling back to the drop-zone/file-picker UI every time before the temp-directory move too; moving away from the output folder just removed the now-pointless relative path. Verified during development by serving the same file over a local `python3 -m http.server` (where fetch works) to confirm the parsing/rendering logic itself was correct, separately from the file:// limitation.
+- **The CSV parser in the JS (`parseCSVLine`) is a hand-ported duplicate of the Swift one** in `main.swift` — same quote-doubling logic, kept manually in sync. If the CSV format ever changes (columns added/reordered, escaping rules changed), both places need the edit; there's no shared source of truth between Swift and JS here.
+- Screenshot-verified in both light and dark mode via a local HTTP server during development (see `Known environment constraint` above for why `file://` + `screencapture` don't work together here) — don't assume future visual changes are correct without doing the same.
 
 ## Conventions
 
