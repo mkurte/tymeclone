@@ -116,6 +116,22 @@ func appendSegmentToCSV(task: String, start: Date, end: Date, duration: TimeInte
     }
 }
 
+// Sums the Duration of every segments.csv row matching the given task name.
+func totalDuration(forTask task: String) -> TimeInterval {
+    let segmentsURL = currentOutputFolder().appendingPathComponent("segments.csv")
+    guard let content = try? String(contentsOf: segmentsURL, encoding: .utf8) else {
+        return 0
+    }
+
+    var total: TimeInterval = 0
+    for line in content.split(separator: "\n").dropFirst() {
+        let columns = parseCSVLine(line)
+        guard columns.count == 4, columns[0] == task else { continue }
+        total += parseDuration(columns[3])
+    }
+    return total
+}
+
 func parseDuration(_ text: String) -> TimeInterval {
     let parts = text.split(separator: ":").compactMap { Int($0) }
     guard parts.count == 3 else { return 0 }
@@ -201,12 +217,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isRecording = false
     private var sessionStart: Date?
     private var currentTaskName = "Unnamed task"
+    private var taskHistoricalTotal: TimeInterval = 0
     private var idleThreshold: TimeInterval = 5 * 60
     private var hasPromptedForCurrentIdlePeriod = false
     private var showSeconds = true
 
     private var startStopItem: NSMenuItem!
     private var setTaskItem: NSMenuItem!
+    private var taskTotalItem: NSMenuItem!
     private var showSecondsItem: NSMenuItem!
     private var outputFolderInfoItem: NSMenuItem!
     private var thresholdItems: [TimeInterval: NSMenuItem] = [:]
@@ -214,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let savedTaskName = UserDefaults.standard.string(forKey: lastTaskNameDefaultsKey) ?? ""
         currentTaskName = savedTaskName.isEmpty ? "Unnamed task" : savedTaskName
+        taskHistoricalTotal = totalDuration(forTask: currentTaskName)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.attributedTitle = statusBarTitle(icon: idleIcon, text: "00:00:00")
@@ -227,6 +246,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setTaskItem = NSMenuItem(title: "Set task (\(currentTaskName))", action: #selector(setCurrentTask), keyEquivalent: "")
         setTaskItem.target = self
         menu.addItem(setTaskItem)
+
+        taskTotalItem = NSMenuItem(title: "Task Total: \(formatDuration(taskHistoricalTotal))", action: nil, keyEquivalent: "")
+        taskTotalItem.isEnabled = false
+        menu.addItem(taskTotalItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -307,6 +330,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTaskName = entered.isEmpty ? "Unnamed task" : entered
         UserDefaults.standard.set(currentTaskName, forKey: lastTaskNameDefaultsKey)
         setTaskItem.title = "Set task (\(currentTaskName))"
+        taskHistoricalTotal = totalDuration(forTask: currentTaskName)
+        taskTotalItem.title = "Task Total: \(formatDuration(taskHistoricalTotal))"
     }
 
     @objc private func setThreshold(_ sender: NSMenuItem) {
@@ -373,6 +398,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let duration = end.timeIntervalSince(start)
         print("Segment: \(formatClock(start)) - \(formatClock(end)) (\(formatDuration(duration))) [\(currentTaskName)]")
         appendSegmentToCSV(task: currentTaskName, start: start, end: end, duration: duration)
+        taskHistoricalTotal += duration
+        taskTotalItem.title = "Task Total: \(formatDuration(taskHistoricalTotal))"
         isRecording = false
         sessionStart = nil
         startStopItem.title = "Start Recording"
@@ -386,6 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let elapsed = Date().timeIntervalSince(start)
         statusItem.button?.attributedTitle = statusBarTitle(icon: recordingIcon, text: formatDuration(elapsed, includeSeconds: showSeconds))
+        taskTotalItem.title = "Task Total: \(formatDuration(taskHistoricalTotal + elapsed))"
 
         let idle = systemIdleSeconds()
 

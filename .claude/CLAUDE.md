@@ -35,6 +35,10 @@ No test target. Verify logic changes (CSV parsing/escaping, duration math, aggre
 
 `daily_summary.csv` (from "Export Daily Summary…"): `Date,Total Duration`, grouped by the date portion of `Start`.
 
+## Task Total menu item
+
+`taskHistoricalTotal` is an in-memory cache of "sum of all `segments.csv` rows matching the current task name", not re-read from disk on every tick. It's recomputed from disk (`totalDuration(forTask:)`) only on launch and on task change (`setCurrentTask`); on `stopRecording` it's just incremented in-memory by the new segment's duration instead of re-reading the file — cheaper, and correct as long as nothing else writes to `segments.csv` concurrently. If you ever add a way to edit/delete past segments, this cache needs an explicit invalidation path or it'll drift from the file.
+
 ## Conventions
 
 - Code comments and identifiers in English (user's global preference), chat responses in German.
